@@ -47,3 +47,50 @@ Gulp is a tool designed to help you automate and enhance your workflow. Our plug
 The MJML ecosystem is still young and we're also counting on your help to help us make it grow and provide its community with even more awesome tools, always aiming to making development with MJML an efficient and fun process!
 
 Getting involved is really easy. If you want to contribute, feel free to [open an issue](https://github.com/mjmlio/mjml/issues) or [submit a pull-request](https://github.com/mjmlio/mjml/pulls)!
+
+## Template Tokens in CSS
+
+MJML can safely minify HTML and CSS while preserving template tokens embedded in CSS. This is useful when your templating system (Liquid, Handlebars, etc.) injects dynamic values into style attributes or `<style>` blocks.
+
+- Supported contexts: CSS value tokens (`color: {{primary}}`) and CSS property-name tokens (`{{prop}}: {{value}}`), as well as block tokens inside style contexts.
+- Enable sanitization: pass `sanitizeStyles: true` when you also enable `minify: true`. Configure token wrappers with `templateSyntax` (array of `{ prefix, suffix }` pairs, defaults to `{{…}}` and `[[…]]`).
+- Mixed syntax: by default MJML disallows mixing block tokens with CSS tokens in the same document. Opt-in via `allowMixedSyntax: true` if you need to mix.
+- Broken delimiters pre-check: MJML fails fast when it detects unbalanced token delimiters inside CSS (e.g. more `{{` than `}}`). Fix your tokens or disable CSS minification.
+
+### CLI examples
+
+- Preserve CSS tokens while minifying:
+
+```bash
+mjml input.mjml -o out.html --config.sanitizeStyles true --config.minify true
+```
+
+- Allow mixed syntax:
+
+```bash
+mjml input.mjml -o out.html --config.sanitizeStyles true --config.minify true --config.allowMixedSyntax true
+```
+
+- Disable CSS minification (to bypass token pre-check/minifier):
+
+```bash
+mjml input.mjml -o out.html --config.minify true --config.minifyOptions '{"minifyCss": false}'
+```
+
+### Programmatic usage
+
+```js
+const { html } = mjml(input, {
+	minify: true,
+	sanitizeStyles: true,
+	templateSyntax: [
+		{ prefix: '{{', suffix: '}}' },
+		{ prefix: '[[', suffix: ']]' },
+	],
+	allowMixedSyntax: false, // set true to allow block + CSS tokens together
+	// Disable CSS minify if your tokens are broken or your minifier cannot parse them:
+	minifyOptions: { minifyCss: false },
+})
+```
+
+For the canonical list of CLI flags and Node.js options, see [Usage](https://documentation.mjml.io/#usage)

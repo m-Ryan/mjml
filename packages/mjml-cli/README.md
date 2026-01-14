@@ -157,6 +157,14 @@ Alternatively, keep HTML minification but skip CSS minification entirely:
 $> mjml input.mjml --config.minify true --config.minifyOptions='{"minifyCss": false}'
 ```
 
+### Allow mixed template syntaxes
+
+By default, mixing block tokens and CSS tokens in the same document is disallowed to avoid subtle parsing issues. Opt in with:
+
+```bash
+$> mjml input.mjml --config.sanitizeStyles true --config.minify true --config.allowMixedSyntax true
+```
+
 ### Specify template syntax delimiters
 
 You can provide one or more template syntaxes via JSON. Each entry is an object with `prefix` and `suffix`:

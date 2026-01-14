@@ -68,7 +68,7 @@ function restoreInlineStyleAttributes(html, syntaxes) {
     let restoredValue = styleValue
     syntaxes.forEach(({ prefix, suffix }, idx) => {
       const regex = new RegExp(`sanitized${idx}:([\\s\\S]*?)(;|$)`, 'g')
-      restoredValue = restoredValue.replace(regex, `${prefix} $1 ${suffix}`)
+      restoredValue = restoredValue.replace(regex, `${prefix}$1${suffix}`)
     })
     restoredValue = restoredValue.replace(/;$/, '')
     return `style="${restoredValue}"`
@@ -108,12 +108,14 @@ function sanitizeCssValueVariablesHtml(html, syntaxes) {
 
     syntaxes.forEach(({ prefix, suffix }) => {
       const regex = new RegExp(
-        `${escapeRegex(prefix)}\\s*([\\s\\S]*?)\\s*${escapeRegex(suffix)}`,
+        `:\\s*${escapeRegex(prefix)}\\s*([\\s\\S]*?)\\s*${escapeRegex(suffix)}`,
         'g',
       )
       let m = regex.exec(styleValue)
       while (m) {
-        matches.push({ index: m.index, full: m[0] })
+        // capture the full token only (prefix...suffix)
+        const fullToken = m[0].replace(/^\s*:\s*/, '')
+        matches.push({ index: m.index, full: fullToken })
         m = regex.exec(styleValue)
       }
     })
@@ -137,12 +139,13 @@ function sanitizeCssValueVariablesHtml(html, syntaxes) {
 
     syntaxes.forEach(({ prefix, suffix }) => {
       const regex = new RegExp(
-        `${escapeRegex(prefix)}\\s*([\\s\\S]*?)\\s*${escapeRegex(suffix)}`,
+        `:\\s*${escapeRegex(prefix)}\\s*([\\s\\S]*?)\\s*${escapeRegex(suffix)}`,
         'g',
       )
       let m = regex.exec(content)
       while (m) {
-        styleMatches.push({ index: m.index, full: m[0] })
+        const fullToken = m[0].replace(/^\s*:\s*/, '')
+        styleMatches.push({ index: m.index, full: fullToken })
         m = regex.exec(content)
       }
     })
@@ -170,16 +173,105 @@ function restoreCssValueVariablesHtml(html, variableMap) {
   return restoredHtml
 }
 
+function sanitizeCssPropertyVariablesHtml(html, syntaxes) {
+  let counter = 0
+  const propMap = {}
+
+  // style="..."
+  let result = html.replace(/style="([^"]*)"/g, (match, styleValue) => {
+    let sanitizedValue = styleValue
+    const matches = []
+
+    syntaxes.forEach(({ prefix, suffix }) => {
+      const regex = new RegExp(
+        `${escapeRegex(prefix)}\\s*([\\s\\S]*?)\\s*${escapeRegex(suffix)}\\s*:`,
+        'g',
+      )
+      let m = regex.exec(styleValue)
+      while (m) {
+        matches.push({ index: m.index, full: m[0], varOnly: m[1] })
+        m = regex.exec(styleValue)
+      }
+    })
+
+    // Replace from left to right
+    matches.sort((a, b) => a.index - b.index)
+    matches.forEach(({ full }) => {
+      const tempVar = `--mj-prop-temp_${counter}`
+      const originalToken = full.replace(/\s*:\s*$/, '')
+      propMap[tempVar] = originalToken
+      sanitizedValue = sanitizedValue.replace(full, `${tempVar}:`)
+      counter += 1
+    })
+
+    sanitizedValue = sanitizedValue.replace(/\s+/g, ' ').trim()
+    return `style="${sanitizedValue}"`
+  })
+
+  // <style> ... </style>
+  result = result.replace(/<style(?:\b[^>]*)?>([\s\S]*?)<\/style\s*>/g, (block, content) => {
+    let sanitizedContent = content
+    const styleMatches = []
+
+    syntaxes.forEach(({ prefix, suffix }) => {
+      const regex = new RegExp(
+        `${escapeRegex(prefix)}\\s*([\\s\\S]*?)\\s*${escapeRegex(suffix)}\\s*:`,
+        'g',
+      )
+      let m = regex.exec(content)
+      while (m) {
+        styleMatches.push({ index: m.index, full: m[0], varOnly: m[1] })
+        m = regex.exec(content)
+      }
+    })
+
+    styleMatches.sort((a, b) => a.index - b.index)
+    styleMatches.forEach(({ full }) => {
+      const tempVar = `--mj-prop-temp_${counter}`
+      const originalToken = full.replace(/\s*:\s*$/, '')
+      propMap[tempVar] = originalToken
+      sanitizedContent = sanitizedContent.replace(full, `${tempVar}:`)
+      counter += 1
+    })
+
+    return block.replace(content, sanitizedContent)
+  })
+
+  return { result, propMap }
+}
+
+function restoreCssPropertyVariablesHtml(html, propMap) {
+  let restoredHtml = html
+  Object.entries(propMap).forEach(([tempVar, originalVar]) => {
+    const regex = new RegExp(`${escapeRegex(tempVar)}\\s*:`, 'g')
+    restoredHtml = restoredHtml.replace(regex, `${originalVar}:`)
+  })
+  return restoredHtml
+}
+
 function detectVariableTypeInHtml(html, syntaxes) {
-  const styleAttrMatches = html.match(/style="[^"]*"/g) || []
-  const styleBlocks = html.match(/<style(?:\b[^>]*)?>[\s\S]*?<\/style\s*>/g) || []
-  const styleContent = [...styleAttrMatches, ...styleBlocks].join('\n')
+  const styleAttrValues = []
+  html.replace(/style="([^"]*)"/g, (m, val) => {
+    styleAttrValues.push(val)
+    return m
+  })
+  const styleBlockValues = []
+  html.replace(/<style(?:\b[^>]*)?>([\s\S]*?)<\/style\s*>/g, (m, val) => {
+    styleBlockValues.push(val)
+    return m
+  })
+  const styleContent = [...styleAttrValues, ...styleBlockValues].join('\n')
 
     const cssValuePattern = syntaxes
       .map(({ prefix }) => `[a-z-]+\\s*:\\s*[^;}"]*${escapeRegex(prefix)}`)
     .join('|')
 
   const isValueVariable = new RegExp(cssValuePattern, 'i').test(styleContent)
+
+  const cssPropertyPattern = syntaxes
+    .map(({ prefix, suffix }) => `${escapeRegex(prefix)}[^${escapeRegex(prefix)}${escapeRegex(suffix)}]*${escapeRegex(suffix)}\\s*:`)
+    .join('|')
+  const isPropertyVariable = new RegExp(cssPropertyPattern, 'i').test(styleContent)
 
   const allVariablesPattern = syntaxes
     .map(({ prefix, suffix }) => `${escapeRegex(prefix)}[^${escapeRegex(prefix)}${escapeRegex(suffix)}]*${escapeRegex(suffix)}`)
@@ -191,21 +283,45 @@ function detectVariableTypeInHtml(html, syntaxes) {
   let match = allVariablesRegex.exec(styleContent)
   while (match) {
     const beforeVar = styleContent.substring(0, match.index)
-    const isCssValue = /[a-z-]+\s*:\s*$/.test(beforeVar.trim()) || /;\s*[a-z-]+\s*:\s*$/.test(beforeVar)
-    if (!isCssValue) {
+    const afterIndex = match.index + match[0].length
+    const afterVar = styleContent.substring(afterIndex)
+    const isCssValueCtx = /:[^;{]*$/.test(beforeVar)
+    const isCssPropertyCtx = /^\s*:/.test(afterVar)
+    if (!isCssValueCtx && !isCssPropertyCtx) {
       isBlockVariable = true
       break
     }
     match = allVariablesRegex.exec(styleContent)
   }
 
-  if (isBlockVariable && isValueVariable) {
-    throw new Error(
-      'Mixed variable syntax detected. Use either CSS property syntax (e.g., color: {{variable}}) OR block syntax (e.g., {{variable}}), not both in the same document.',
-    )
-  }
+  return { isBlockVariable, isValueVariable, isPropertyVariable }
+}
 
-  return { isBlockVariable, isValueVariable }
+function detectBrokenTemplateDelimitersInCss(html, syntaxes) {
+  const styleAttrValues = []
+  html.replace(/style="([^"]*)"/g, (m, val) => {
+    styleAttrValues.push(val)
+    return m
+  })
+  const styleBlockValues = []
+  html.replace(/<style(?:\b[^>]*)?>([\s\S]*?)<\/style\s*>/g, (m, val) => {
+    styleBlockValues.push(val)
+    return m
+  })
+  const styleContent = [...styleAttrValues, ...styleBlockValues].join('\n')
+
+  const broken = []
+  syntaxes.forEach(({ prefix, suffix }) => {
+    const prefixRegex = new RegExp(escapeRegex(prefix), 'g')
+    const suffixRegex = new RegExp(escapeRegex(suffix), 'g')
+    const prefixCount = (styleContent.match(prefixRegex) || []).length
+    const suffixCount = (styleContent.match(suffixRegex) || []).length
+    if (prefixCount !== suffixCount) {
+      broken.push({ prefix, suffix, prefixCount, suffixCount })
+    }
+  })
+
+  return broken
 }
 
 class ValidationError extends Error {
@@ -316,6 +432,7 @@ export default async function mjml2html(mjml, options = {}) {
     printerSupport = false,
     sanitizeStyles = false,
     templateSyntax,
+    allowMixedSyntax = false,
   } = mergedOptions
 
   const components = { ...globalComponents }
@@ -591,8 +708,7 @@ export default async function mjml2html(mjml, options = {}) {
       typeof minifyOptions.minifyCss === 'undefined' &&
       typeof minifyOptions.minifyCSS !== 'undefined'
     ) {
-      const legacy = minifyOptions.minifyCSS
-      const mapped = legacy === false ? false : { preset: 'lite' }
+      const mapped = minifyOptions.minifyCSS ? { preset: 'lite' } : false
       const { minifyCSS, ...rest } = minifyOptions
       normalizedMinifyOptions = { ...rest, minifyCss: mapped }
     }
@@ -626,6 +742,7 @@ export default async function mjml2html(mjml, options = {}) {
     let didSanitize = false
     let isBlockVariable = false
     let variableMap = {}
+    let propMap = {}
     const syntaxes =
       templateSyntax || [
         { prefix: '{{', suffix: '}}' },
@@ -634,12 +751,34 @@ export default async function mjml2html(mjml, options = {}) {
 
     const cssMinifyEnabled = htmlnanoOptions.minifyCss !== false
     if (sanitizeStyles === true && cssMinifyEnabled) {
+      const broken = detectBrokenTemplateDelimitersInCss(content, syntaxes)
+      if (broken.length) {
+        const details = broken
+          .map(
+            (b) => `${b.prefix}…${b.suffix} (${b.prefixCount} open, ${b.suffixCount} close)`,
+          )
+          .join(', ')
+        throw new Error(
+          `Unbalanced template delimiters found in CSS: ${details}. Fix template tokens or disable CSS minification via --config.minifyOptions '{"minifyCss": false}'.`,
+        )
+      }
       const detected = detectVariableTypeInHtml(content, syntaxes)
       isBlockVariable = detected.isBlockVariable
+      if (!allowMixedSyntax && isBlockVariable && (detected.isValueVariable || detected.isPropertyVariable)) {
+        throw new Error(
+          'Mixed variable syntax detected. Use either CSS property syntax (e.g., color: {{variable}}) OR block syntax (e.g., {{variable}}), not both in the same document.',
+        )
+      }
       if (detected.isValueVariable) {
         const sanitized = sanitizeCssValueVariablesHtml(content, syntaxes)
         content = sanitized.result
         variableMap = sanitized.variableMap
+        didSanitize = true
+      }
+      if (detected.isPropertyVariable) {
+        const sanitizedProp = sanitizeCssPropertyVariablesHtml(content, syntaxes)
+        content = sanitizedProp.result
+        propMap = sanitizedProp.propMap
         didSanitize = true
       }
       if (isBlockVariable) {
@@ -652,11 +791,18 @@ export default async function mjml2html(mjml, options = {}) {
     content = await minifier.process(content, htmlnanoOptions).then((res) => res.html)
 
     if (didSanitize) {
+      // Always restore CSS value/property placeholders when present
+      if (variableMap && Object.keys(variableMap).length > 0) {
+        content = restoreCssValueVariablesHtml(content, variableMap)
+      }
+      if (propMap && Object.keys(propMap).length > 0) {
+        content = restoreCssPropertyVariablesHtml(content, propMap)
+      }
+
+      // Additionally restore block-style tokens if they were detected
       if (isBlockVariable) {
         content = restoreInlineStyleAttributes(content, syntaxes)
         content = restoreStyleTagBlocks(content, syntaxes)
-      } else if (variableMap && Object.keys(variableMap).length > 0) {
-        content = restoreCssValueVariablesHtml(content, variableMap)
       }
     }
   } else if (beautify) {
