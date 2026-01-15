@@ -74,6 +74,7 @@ export default async () => {
       },
       s: {
         alias: 'stdout',
+        type: 'boolean',
         describe: 'Output HTML to stdout',
       },
       o: {
@@ -154,6 +155,12 @@ export default async () => {
     templateSyntax && { templateSyntax },
     argv.c && argv.c.keepComments === 'false' && { keepComments: false },
   )
+
+  const configAllowIncludes =
+    argv.c && (argv.c.allowIncludes === true || argv.c.allowIncludes === 'true')
+  if (configAllowIncludes) {
+    config.ignoreIncludes = false
+  }
 
   if (typeof config.sanitizeStyles === 'string') {
     config.sanitizeStyles = config.sanitizeStyles === 'true'

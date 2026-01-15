@@ -202,6 +202,16 @@ $> mjml ./my-project/input.mjml --config.filePath ./my-partials/
 
 If you like to keep your partials together and you want to be able to mj-include them without having to change the relative path of the includes depending on the compiled file path, you can use this option. In this exemple, `<mj-include path="./header.mjml" />` will include `./my-partials/header.mjml`, ignoring the actual path of `input.mjml`.
 
+### Allow includes (opt-in)
+
+By default, includes are ignored for security (`ignoreIncludes: true`). Enable them during local development with `--config.allowIncludes true`:
+
+```bash
+$> mjml input.mjml --config.allowIncludes true
+```
+
+When enabled, include paths are restricted to the directory of the input file and its subdirectories. Absolute paths and paths escaping the project directory are denied.
+
 ### Log error stack
 
 ```bash
