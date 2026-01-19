@@ -420,7 +420,7 @@ export default async function mjml2html(mjml, options = {}) {
     keepComments = true,
     minify = false,
     minifyOptions,
-    ignoreIncludes = false,
+    ignoreIncludes = true,
     juiceOptions = {},
     juicePreserveTags = null,
     skeleton = defaultSkeleton,
