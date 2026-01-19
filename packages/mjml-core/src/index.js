@@ -454,7 +454,6 @@ export default async function mjml2html(mjml, options = {}) {
   }
 
   const globalData = {
-    backgroundColor: '',
     beforeDoctype: '',
     breakpoint: '480px',
     classes: {},
@@ -598,9 +597,7 @@ export default async function mjml2html(mjml, options = {}) {
     addComponentHeadSyle(headStyle) {
       globalData.componentsHeadStyle.push(headStyle)
     },
-    setBackgroundColor: (color) => {
-      globalData.backgroundColor = color
-    },
+    getGlobalDatas: () => globalData,
     processing: (node, context) => processing(node, context, applyAttributes),
   }
 
