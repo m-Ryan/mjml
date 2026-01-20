@@ -27,6 +27,10 @@ export default class MjBody extends BodyComponent {
         'word-spacing': 'normal',
         'background-color': this.getAttribute('background-color'),
       },
+      div: {
+        'word-spacing': 'normal',
+        'background-color': this.getAttribute('background-color'),
+      },
     }
   }
 
@@ -39,7 +43,6 @@ export default class MjBody extends BodyComponent {
       <body ${this.htmlAttributes({
         id: this.getAttribute('id'),
         class: this.getAttribute('css-class'),
-        "background-color": this.getAttribute('background-color'),
         style: 'body',
       })}>
         ${buildPreview(preview)}
@@ -50,6 +53,7 @@ export default class MjBody extends BodyComponent {
             role: 'article',
             lang,
             dir,
+            style: 'div',
           })}
         >
         ${this.renderChildren()}
