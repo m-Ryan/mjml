@@ -43,7 +43,6 @@ export default class MjBody extends BodyComponent {
       <body ${this.htmlAttributes({
         id: this.getAttribute('id'),
         class: this.getAttribute('css-class'),
-        "bgcolor": this.getAttribute('background-color'),
         style: 'body',
       })}>
         ${buildPreview(preview)}
@@ -54,7 +53,6 @@ export default class MjBody extends BodyComponent {
             role: 'article',
             lang,
             dir,
-            "bgcolor": this.getAttribute('background-color'),
             style: 'div',
           })}
         >
