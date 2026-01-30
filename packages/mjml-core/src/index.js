@@ -29,9 +29,10 @@ import globalComponents, {
 
 import makeLowerBreakpoint from './helpers/makeLowerBreakpoint'
 import suffixCssClasses from './helpers/suffixCssClasses'
-import mergeOutlookConditionnals from './helpers/mergeOutlookConditionnals'
-import minifyOutlookConditionnals from './helpers/minifyOutlookConditionnals'
-import defaultSkeleton from './helpers/skeleton'
+import defaultSkeleton from './helpers/skeletonAmp'
+import { buildAmpCustomCssContent } from './helpers/styles'
+import { buildMediaQueriesAmpCss } from './helpers/mediaQueries'
+import { getFontUrlsForAmp, buildFontsTagsAmp, isAllowlistedFontUrl } from './helpers/fonts'
 import { initializeType } from './types/type'
 
 import handleMjmlConfig, {
@@ -324,6 +325,257 @@ function detectBrokenTemplateDelimitersInCss(html, syntaxes) {
   return broken
 }
 
+function stripOutlookConditionalComments(html) {
+  return html
+    .replace(/<!--\[if mso \| IE\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<!--\[if mso\]>[\s\S]*?<!\[endif\]-->/gi, '')
+    .replace(/<!--\[if !mso \| IE\]><!-->[\s\S]*?<!\[endif\]-->/gi, '')
+}
+
+function getAttr(attrs, name) {
+  const re = new RegExp(`${name}=["']([^"']*)["']`, 'i')
+  const m = attrs.match(re)
+  return m ? m[1].trim() : null
+}
+
+async function fetchImageDimensionsForAmpImg(html, options = {}) {
+  const { timeout = 5000 } = options
+  let imageSize
+  try {
+    imageSize = require('image-size')
+  } catch (e) {
+    return html
+  }
+  const regex = /<amp-img\s+([^>]*?)>/gi
+  const tags = []
+  let m
+  while ((m = regex.exec(html)) !== null) {
+    const attrs = m[1]
+    const layout = getAttr(attrs, 'layout')
+    // Skip layout="fixed": those are display-size (e.g. icon 30px), not aspect-ratio; replacing would break display size
+    if (layout === 'fixed') continue
+    const src = getAttr(attrs, 'src')
+    const w = getAttr(attrs, 'width')
+    const h = getAttr(attrs, 'height')
+    const width = w != null ? parseInt(w, 10) : null
+    const height = h != null ? parseInt(h, 10) : null
+    if (src && width != null && height != null) {
+      if (!/^https?:\/\//i.test(src) || /\{\{|\}\}|\[\[|\]\]/.test(src)) continue
+      tags.push({ index: m.index, fullMatch: m[0], attrs, src, width, height })
+    }
+  }
+  const urlToDims = {}
+  const fetchUrl = (url) => {
+    if (urlToDims[url]) return Promise.resolve(urlToDims[url])
+    return new Promise((resolve) => {
+      const protocol = url.startsWith('https') ? require('https') : require('http')
+      const req = protocol.get(url, { timeout }, (res) => {
+        const chunks = []
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          try {
+            const buffer = Buffer.concat(chunks)
+            const dims = imageSize(buffer)
+            if (dims && dims.width && dims.height) {
+              urlToDims[url] = { width: dims.width, height: dims.height }
+            }
+          } catch (err) {
+            // ignore
+          }
+          resolve(urlToDims[url] || null)
+        })
+      })
+      req.on('error', () => resolve(null))
+      req.on('timeout', () => {
+        req.destroy()
+        resolve(null)
+      })
+    })
+  }
+  await Promise.all(
+    map(
+      reduce(tags, (acc, t) => (acc.includes(t.src) ? acc : [...acc, t.src]), []),
+      (url) => fetchUrl(url),
+    ),
+  )
+  if (isEmpty(urlToDims)) return html
+  let out = html
+  for (let i = tags.length - 1; i >= 0; i--) {
+    const { index, fullMatch, attrs, src } = tags[i]
+    const dims = urlToDims[src]
+    if (!dims) continue
+    const newAttrs = attrs
+      .replace(/\bwidth=["'][^"']*["']/i, `width="${dims.width}"`)
+      .replace(/\bheight=["'][^"']*["']/i, `height="${dims.height}"`)
+    const newTag = `<amp-img ${newAttrs}>`
+    out = out.substring(0, index) + newTag + out.substring(index + fullMatch.length)
+  }
+  return out
+}
+
+/**
+ * Fetch a URL and return response body as UTF-8 string. Follows one redirect.
+ * Resolves with null on error or non-2xx.
+ */
+function fetchUrlText(url, options = {}) {
+  const { timeout = 8000, userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } = options
+  return new Promise((resolve) => {
+    const protocol = url.startsWith('https') ? require('https') : require('http')
+    const req = protocol.get(
+      url,
+      {
+        timeout,
+        headers: { 'User-Agent': userAgent },
+        ...(options.requestOptions || {}),
+      },
+      (res) => {
+        const isRedirect = res.statusCode >= 301 && res.statusCode <= 308
+        const location = res.headers.location
+        if (isRedirect && location) {
+          const nextUrl = location.startsWith('http') ? location : new URL(location, url).href
+          fetchUrlText(nextUrl, { ...options, requestOptions: {} })
+            .then(resolve)
+            .catch(() => resolve(null))
+          return
+        }
+        if (res.statusCode !== 200) {
+          resolve(null)
+          return
+        }
+        const chunks = []
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          try {
+            resolve(Buffer.concat(chunks).toString('utf8'))
+          } catch {
+            resolve(null)
+          }
+        })
+      },
+    )
+    req.on('error', () => resolve(null))
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(null)
+    })
+  })
+}
+
+/** Strip @import rules from CSS (AMP amp-custom does not allow @import). */
+function stripCssImport(css) {
+  if (typeof css !== 'string') return ''
+  return css.replace(/@import\s+[^;]+;?\s*/gi, '').trim()
+}
+
+/** Extract URLs from @import url(...) in CSS. */
+function extractImportUrls(css) {
+  if (typeof css !== 'string') return []
+  const matches = css.match(/@import\s+url\s*\(\s*["']?([^"')]+)["']?\s*\)\s*;?/gi)
+  if (!matches) return []
+  return map(matches, (m) => {
+    const u = m.match(/url\s*\(\s*["']?([^"')]+)["']?\s*\)/i)
+    return u ? u[1].trim() : null
+  }).filter(Boolean)
+}
+
+/**
+ * Fetch font stylesheet URLs and return concatenated CSS for amp-custom.
+ * Resolves @import url(...) (e.g. Google Fonts) and strips @import; inlines @font-face.
+ * @see https://amp.dev/documentation/guides-and-tutorials/develop/style_and_layout/custom_fonts
+ */
+async function fetchFontCssForAmp(urls) {
+  if (!urls || urls.length === 0) return ''
+  const seen = new Set()
+  async function fetchOne(url) {
+    if (seen.has(url)) return ''
+    seen.add(url)
+    const text = await fetchUrlText(url)
+    if (!text) return ''
+    const importUrls = extractImportUrls(text)
+    let css = stripCssImport(text)
+    if (importUrls.length > 0) {
+      const resolved = await Promise.all(map(importUrls, fetchOne))
+      css = resolved.filter(Boolean).join('\n') + (css ? '\n' + css : '')
+    }
+    return css
+  }
+  const results = await Promise.all(map(urls, fetchOne))
+  return results.filter(Boolean).join('\n')
+}
+
+function sanitizeHtmlForAmpEmail(html) {
+  let out = stripOutlookConditionalComments(html)
+  // AMP4EMAIL: only <link> from allowlisted font origins are allowed; strip other link tags
+  out = out.replace(/<link\s+([^>]*)\/?>/gi, (match, attrs) => {
+    const hrefMatch = attrs.match(/href\s*=\s*["']([^"']*)["']/i)
+    if (!hrefMatch) return ''
+    return isAllowlistedFontUrl(hrefMatch[1]) ? match : ''
+  })
+  // AMP4EMAIL: <img> is disallowed, use <amp-img> with layout and numeric width/height; output full element so tag is closed
+  out = out.replace(/<img\s+([^>]*?)\s*\/?\s*>/gi, (_, attrs) => {
+    let a = attrs.replace(/\s*\/\s*$/, '').trim()
+    a = a.replace(/(\b(?:width|height))=["'](\d+)px["']/gi, '$1="$2"')
+    if (!/\bwidth\s*=/.test(a)) a += ' width="1"'
+    if (!/\bheight\s*=/.test(a)) a += ' height="1"'
+    return `<amp-img layout="responsive" ${a}></amp-img>`
+  })
+  // AMP4EMAIL: table cell images - unwrap td > div > amp-img to td > amp-img so clients that strip div or mis-handle nesting still show the image
+  out = out.replace(
+    /<td([^>]*)>(\s*)<div([^>]*)>(\s*)<amp-img\s+([^>]*?)><\/amp-img>\s*<\/div>/gi,
+    (m, tdAttrs, s1, divAttrs, s2, ampAttrs) => {
+      const divStyle = getAttr(divAttrs, 'style') || ''
+      const tdStyle = getAttr(tdAttrs, 'style') || ''
+      const merged = [tdStyle, divStyle].filter(Boolean).join(';').replace(/;+/g, ';').replace(/^;|;$/g, '')
+      const tdAttrsNoStyle = tdAttrs.replace(/\s*style=["'][^"']*["']/gi, '').trim()
+      const styleAttr = merged ? ` style="${merged}"` : ''
+      const attrs = [tdAttrsNoStyle, styleAttr].filter(Boolean).join(' ')
+      return `<td ${attrs}>${s1}<amp-img ${ampAttrs}></amp-img>`
+    },
+  )
+  // AMP4EMAIL: relative href="#" is disallowed
+  out = out.replace(/href=["']#["']/gi, 'href="https://example.com/"')
+  // AMP4EMAIL: strip disallowed inline CSS (!important, cursor:auto, mso-*, -webkit-background-clip, -moz-user-select, user-select)
+  out = out.replace(/style="([^"]*)"/g, (_, style) => {
+    const s = style
+      .replace(/\s*!important\s*/gi, ' ')
+      .replace(/\s*mso-padding-alt\s*:[^;]+;?/gi, '')
+      .replace(/\s*mso-hide\s*:[^;]+;?/gi, '')
+      .replace(/\s*cursor\s*:\s*auto\s*;?/gi, '')
+      .replace(/\s*-webkit-background-clip\s*:[^;]+;?/gi, '')
+      .replace(/\s*-moz-user-select\s*:[^;]+;?/gi, '')
+      .replace(/\s*user-select\s*:[^;]+;?/gi, '')
+      .trim()
+      .replace(/;\s*;+/g, ';')
+      .replace(/^;\s*|;\s*$/g, '')
+    return s ? `style="${s}"` : ''
+  })
+  // AMP4EMAIL: <strike> is disallowed; use span with text-decoration
+  out = out.replace(/<strike\s*([^>]*)>([\s\S]*?)<\/strike\s*>/gi, (_, attrs, inner) => {
+    const style = getAttr(attrs, 'style') || ''
+    const add = 'text-decoration:line-through'
+    const newStyle = style ? `${style};${add}` : add
+    return `<span style="${newStyle}">${inner}</span>`
+  })
+  // AMP4EMAIL: align on <label> is disallowed
+  out = out.replace(/<label\s+([^>]*)>/gi, (_, attrs) => {
+    const cleaned = attrs.replace(/\s*align\s*=\s*["'][^"']*["']/gi, '').trim()
+    return `<label ${cleaned}>`
+  })
+  // AMP4EMAIL: strip disallowed properties from amp-custom CSS (!important, -webkit-background-clip, etc.)
+  out = out.replace(/<style\s+amp-custom[^>]*>([\s\S]*?)<\/style\s*>/gi, (_, css) => {
+    const cleaned = css
+      .replace(/\s*!important\s*/gi, ' ')
+      .replace(/\s*-webkit-background-clip\s*:[^;}+]+;?/g, '')
+      .replace(/\s*-moz-user-select\s*:[^;}+]+;?/g, '')
+      .replace(/\s*user-select\s*:[^;}+]+;?/g, '')
+      .replace(/\s*;+\s*/g, ';')
+      .replace(/^\s*;|;\s*$/g, '')
+      .trim()
+    return `<style amp-custom>${cleaned}</style>`
+  })
+  return out
+}
+
 class ValidationError extends Error {
   constructor(message, errors) {
     super(message)
@@ -433,6 +685,7 @@ export default async function mjml2html(mjml, options = {}) {
     sanitizeStyles = false,
     templateSyntax,
     allowMixedSyntax = false,
+    fetchFontsForAmp = true,
   } = mergedOptions
 
   const components = { ...globalComponents }
@@ -642,7 +895,8 @@ export default async function mjml2html(mjml, options = {}) {
     )
   }
 
-  content = minifyOutlookConditionnals(content)
+  // AMP: skip Outlook conditionals
+  // content = minifyOutlookConditionnals(content)
 
   if (mjOutsideRaws.length) {
     const toAddBeforeDoctype = mjOutsideRaws.filter(
@@ -672,11 +926,46 @@ export default async function mjml2html(mjml, options = {}) {
 
     content = $.root().html()
   }
+  const ampBaseCss = [
+    '#outlook a { padding:0; }',
+    'body { margin:0;padding:0;}',
+    'table, td { border-collapse:collapse; }',
+    'img { border:0;height:auto;line-height:100%; outline:none;text-decoration:none; }',
+    'p { display:block;margin:13px 0; }',
+  ].join('\n')
+  let ampCustomCss = [
+    ampBaseCss,
+    buildAmpCustomCssContent(
+      globalData.breakpoint,
+      globalData.componentsHeadStyle,
+      globalData.headStyle,
+      globalData.style,
+    ),
+    buildMediaQueriesAmpCss(globalData.breakpoint, globalData.mediaQueries),
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .replace(/\s*!important\s*/gi, ' ')
+    .replace(/\[\s*href\s*\]/g, '')
+
+  // AMP4EMAIL: custom fonts via @font-face in amp-custom (allowed per spec); <link> only when fetch disabled or failed
+  let fontsHtml = buildFontsTagsAmp(content, globalData.inlineStyle, fonts)
+  if (isNode && fetchFontsForAmp === true) {
+    const fontUrls = getFontUrlsForAmp(content, globalData.inlineStyle, fonts)
+    const fontCss = await fetchFontCssForAmp(fontUrls)
+    // Inline font CSS (including @font-face) into amp-custom; @import resolved and stripped in fetchFontCssForAmp
+    if (fontCss) {
+      ampCustomCss = fontCss + '\n' + ampCustomCss
+      fontsHtml = '' // avoid duplicate load: use @font-face only
+    }
+  }
 
   content = skeleton({
     content,
     ...globalData,
     printerSupport,
+    ampCustomCss,
+    fontsHtml,
   })
 
   if (globalData.inlineStyle.length > 0) {
@@ -695,7 +984,8 @@ export default async function mjml2html(mjml, options = {}) {
     })
   }
 
-  content = mergeOutlookConditionnals(content)
+  // AMP: skip Outlook conditionals
+  // content = mergeOutlookConditionnals(content)
 
   // PostProcessors
   if (minify) {
@@ -806,6 +1096,14 @@ export default async function mjml2html(mjml, options = {}) {
     content = await prettier.format(content, {
       parser: 'html',
       printWidth: 240,
+    })
+  }
+
+  content = sanitizeHtmlForAmpEmail(content)
+
+  if (isNode && mergedOptions.fetchImageDimensions) {
+    content = await fetchImageDimensionsForAmpImg(content, {
+      timeout: mergedOptions.fetchImageDimensionsTimeout ?? 5000,
     })
   }
 

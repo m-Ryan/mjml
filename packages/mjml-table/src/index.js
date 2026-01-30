@@ -26,6 +26,7 @@ export default class MjTable extends BodyComponent {
     padding: 'unit(px,%){1,4}',
     role: 'enum(none,presentation)',
     'table-layout': 'enum(auto,fixed,initial,inherit)',
+    'text-align': 'enum(left,right,center)',
     'vertical-align': 'enum(top,bottom,middle)',
     width: 'unit(px,%,auto)',
   }
@@ -78,13 +79,17 @@ export default class MjTable extends BodyComponent {
   }
 
   render() {
+    const cellpaddingRaw = this.getAttribute('cellpadding')
+    const firstNum = cellpaddingRaw != null && String(cellpaddingRaw).match(/\d+/)
+    const cellpadding =
+      firstNum != null ? Math.max(0, parseInt(firstNum[0], 10)) : this.getAttribute('cellpadding')
     const tableAttributes = reduce(
-      ['cellpadding', 'cellspacing', 'role'],
+      ['cellspacing', 'role'],
       (acc, v) => ({
         ...acc,
         [v]: this.getAttribute(v),
       }),
-      {},
+      { cellpadding },
     )
 
     return `

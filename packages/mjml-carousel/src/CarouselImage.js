@@ -24,41 +24,14 @@ export default class MjCarouselImage extends BodyComponent {
   }
 
   getStyles() {
-    const hasThumbnailsSupported = this.hasThumbnailsSupported()
     return {
       images: {
         img: {
           'border-radius': this.getAttribute('border-radius'),
           display: 'block',
-          width: this.context.containerWidth,
           'max-width': '100%',
-          height: 'auto',
         },
         firstImageDiv: {},
-        otherImageDiv: {
-          display: 'none',
-          'mso-hide': 'all',
-        },
-      },
-      radio: {
-        input: {
-          display: 'none',
-          'mso-hide': 'all',
-        },
-      },
-      thumbnails: {
-        a: {
-          border: this.getAttribute('tb-border'),
-          'border-radius': this.getAttribute('tb-border-radius'),
-          display: hasThumbnailsSupported ? 'none' : 'inline-block',
-          overflow: 'hidden',
-          width: this.getAttribute('tb-width'),
-        },
-        img: {
-          display: 'block',
-          width: '100%',
-          height: 'auto',
-        },
       },
     }
   }
@@ -125,33 +98,38 @@ export default class MjCarouselImage extends BodyComponent {
   render() {
     const { src, alt, href, rel, title } = this.attributes
     const { index } = this.props
+    const width = parseInt(this.context.containerWidth, 10) || 600
+    const height = width
 
-    const image = `
-      <img
+    const ampImg = `
+      <amp-img
         ${this.htmlAttributes({
-          title,
           src,
-          alt,
+          alt: alt || '',
+          width,
+          height,
+          layout: 'responsive',
+          title,
           style: 'images.img',
-          width: parseInt(this.context.containerWidth, 10),
-          border: '0',
-        })} />
+        })}
+      ></amp-img>
     `
 
     const cssClass = this.getAttribute('css-class') || ''
+
+    const content =
+      href && href !== ''
+        ? `<a ${this.htmlAttributes({ href, rel, target: '_blank' })}>${ampImg}</a>`
+        : ampImg
 
     return `
       <div
         ${this.htmlAttributes({
           class: `mj-carousel-image mj-carousel-image-${index + 1} ${cssClass}`,
-          style: index === 0 ? 'images.firstImageDiv' : 'images.otherImageDiv',
+          style: 'images.firstImageDiv',
         })}
       >
-        ${
-          href
-            ? `<a ${this.htmlAttributes({ href, rel, target: '_blank' })}>${image}</a>`
-            : image
-        }
+        ${content}
       </div>
     `
   }

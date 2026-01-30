@@ -11,6 +11,7 @@ export default class MjNavbar extends BodyComponent {
   static allowedAttributes = {
     align: 'enum(left,center,right)',
     'base-url': 'string',
+    'container-background-color': 'color',
     hamburger: 'string',
     'ico-align': 'enum(left,center,right)',
     'ico-open': 'string',

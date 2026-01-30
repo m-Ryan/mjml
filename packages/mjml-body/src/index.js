@@ -49,7 +49,6 @@ export default class MjBody extends BodyComponent {
         <div
           ${this.htmlAttributes({
             ...(title && { 'aria-label': title }),
-            'aria-roledescription': 'email',
             role: 'article',
             lang,
             dir,

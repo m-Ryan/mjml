@@ -4,18 +4,23 @@
   "scripts": {
     "build:watch": "lerna run build --parallel -- -- -w",
     "build": "lerna run build --parallel --ignore mjml-browser",
-    "build-browser": "cd packages/mjml-browser && yarn build",
+    "build-browser": "cd packages/mjml-browser && pnpm run build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "postinstall": "lerna bootstrap",
     "prettier": "prettier --write \"packages/**/{src,bin}/**/*.?(js|json)\"",
-    "test": "lerna run test"
+    "test": "lerna run test",
+    "test:diff": "mocha test/diff.test.js --timeout 120000"
   },
   "workspaces": [
     "packages/*"
   ],
   "dependencies": {
-    "cssnano-preset-lite": "^4.0.4"
+    "cssnano-preset-lite": "^4.0.4",
+    "mjml": "5.0.0-alpha.9",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "puppeteer": "^24.36.1"
   },
   "devDependencies": {
     "@babel/core": "^7.28.4",
@@ -23,6 +28,7 @@
     "@babel/plugin-transform-runtime": "^7.28.3",
     "@babel/preset-env": "^7.28.3",
     "@babel/register": "^7.28.3",
+    "amphtml-validator": "^1.0.38",
     "babel-eslint": "^10.1.0",
     "babel-plugin-add-module-exports": "^1.0.2",
     "babel-plugin-lodash": "^3.3.4",

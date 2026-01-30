@@ -236,6 +236,11 @@ export default class MjSocialElement extends BodyComponent {
     const hasLink = !!this.getAttribute('href')
     const iconPosition = this.getAttribute('icon-position')
 
+    const iconW = parseInt(iconSize, 10) || 24
+    const iconH =
+      parseInt(this.getAttribute('icon-height') || this.getSocialAttributes()['icon-height'], 10) ||
+      iconW
+
     const makeIcon = () => `
         <td ${this.htmlAttributes({ style: 'td' })}>
           <table
@@ -259,17 +264,17 @@ export default class MjSocialElement extends BodyComponent {
                         })}>`
                       : ''
                   }
-                    <img
+                    <amp-img
                       ${this.htmlAttributes({
                         alt: this.getAttribute('alt'),
                         title: this.getAttribute('title'),
                         src,
                         style: 'img',
-                        width: parseInt(iconSize, 10),
-                        sizes,
-                        srcset,
+                        width: iconW,
+                        height: iconH,
+                        layout: 'fixed',
                       })}
-                    />
+                    ></amp-img>
                   ${hasLink ? `</a>` : ''}
                 </td>
               </tr>

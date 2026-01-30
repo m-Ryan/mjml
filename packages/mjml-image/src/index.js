@@ -1,6 +1,6 @@
 import { min } from 'lodash'
 
-import { BodyComponent, makeLowerBreakpoint } from 'mjml-core'
+import { BodyComponent } from 'mjml-core'
 
 import widthParser from 'mjml-core/lib/helpers/widthParser'
 
@@ -96,24 +96,26 @@ export default class MjImage extends BodyComponent {
   }
 
   renderImage() {
-    const height = this.getAttribute('height')
+    const width = this.getContentWidth()
+    const heightAttr = this.getAttribute('height')
+    // AMP requires numeric width and height; default height to width if auto/missing
+    const height =
+      heightAttr && heightAttr !== 'auto'
+        ? parseInt(heightAttr, 10)
+        : width
 
-    const img = `
-      <img
+    const ampImg = `
+      <amp-img
         ${this.htmlAttributes({
-          alt: this.getAttribute('alt'),
+          alt: this.getAttribute('alt') ?? '',
           src: this.getAttribute('src'),
-          srcset: this.getAttribute('srcset'),
-          sizes: this.getAttribute('sizes'),
+          width,
+          height,
+          layout: 'responsive',
           style: 'img',
           title: this.getAttribute('title'),
-          width: this.getContentWidth(),
-          usemap: this.getAttribute('usemap'),
-          ...(height
-            ? { height: height === 'auto' ? height : parseInt(height, 10) }
-            : {}),
         })}
-      />
+      ></amp-img>
     `
 
     if (this.getAttribute('href')) {
@@ -127,20 +129,15 @@ export default class MjImage extends BodyComponent {
             title: this.getAttribute('title'),
           })}
         >
-          ${img}
+          ${ampImg}
         </a>
       `
     }
 
-    return img
+    return ampImg
   }
 
-  headStyle = (breakpoint) => `
-    @media only screen and (max-width:${makeLowerBreakpoint(breakpoint)}) {
-      table.mj-full-width-mobile { width: 100% !important; }
-      td.mj-full-width-mobile { width: auto !important; }
-    }
-  `
+  headStyle = () => ''
 
   render() {
     return `

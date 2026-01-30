@@ -36,35 +36,12 @@ export default class MjAccordion extends BodyComponent {
     padding: '10px 25px',
   }
 
-  headStyle = () =>
-    `
-      noinput.mj-accordion-checkbox { display:block!important; }
-
-      @media yahoo, only screen and (min-width:0) {
-        .mj-accordion-element { display:block; }
-        input.mj-accordion-checkbox, .mj-accordion-less { display:none!important; }
-        input.mj-accordion-checkbox + * .mj-accordion-title { cursor:pointer; touch-action:manipulation; -webkit-user-select:none; -moz-user-select:none; user-select:none; }
-        input.mj-accordion-checkbox + * .mj-accordion-content { overflow:hidden; display:none; }
-        input.mj-accordion-checkbox + * .mj-accordion-more { display:block!important; }
-        input.mj-accordion-checkbox:checked + * .mj-accordion-content { display:block; }
-        input.mj-accordion-checkbox:checked + * .mj-accordion-more { display:none!important; }
-        input.mj-accordion-checkbox:checked + * .mj-accordion-less { display:block!important; }
-      }
-
-      .moz-text-html input.mj-accordion-checkbox + * .mj-accordion-title { cursor: auto; touch-action: auto; -webkit-user-select: auto; -moz-user-select: auto; user-select: auto; }
-      .moz-text-html input.mj-accordion-checkbox + * .mj-accordion-content { overflow: hidden; display: block; }
-      .moz-text-html input.mj-accordion-checkbox + * .mj-accordion-ico { display: none; }
-
-      @goodbye { @gmail }
-    `
+  headStyle = () => ''
 
   getStyles() {
     return {
-      table: {
+      accordion: {
         width: '100%',
-        'border-collapse': 'collapse',
-        border: this.getAttribute('border'),
-        'border-bottom': 'none',
         'font-family': this.getAttribute('font-family'),
       },
     }
@@ -97,20 +74,16 @@ export default class MjAccordion extends BodyComponent {
     )
 
     return `
-      <table
+      <amp-accordion
         ${this.htmlAttributes({
-          cellspacing: '0',
-          cellpadding: '0',
           class: 'mj-accordion',
-          style: 'table',
+          style: 'accordion',
         })}
       >
-        <tbody>
-          ${this.renderChildren(this.props.children, {
-            attributes: childrenAttr,
-          })}
-        </tbody>
-      </table>
+        ${this.renderChildren(this.props.children, {
+          attributes: childrenAttr,
+        })}
+      </amp-accordion>
     `
   }
 }

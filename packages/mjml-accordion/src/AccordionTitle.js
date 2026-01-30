@@ -1,5 +1,4 @@
 import { BodyComponent } from 'mjml-core'
-import conditionalTag from 'mjml-core/lib/helpers/conditionalTag'
 
 export default class MjAccordionTitle extends BodyComponent {
   static componentName = 'mj-accordion-title'
@@ -26,32 +25,13 @@ export default class MjAccordionTitle extends BodyComponent {
 
   getStyles() {
     return {
-      td: {
-        width: '100%',
+      span: {
         'background-color': this.getAttribute('background-color'),
         color: this.getAttribute('color'),
         'font-size': this.getAttribute('font-size'),
         'font-family': this.resolveFontFamily(),
         'font-weight': this.getAttribute('font-weight'),
         padding: this.getAttribute('padding'),
-        'padding-bottom': this.getAttribute('padding-bottom'),
-        'padding-left': this.getAttribute('padding-left'),
-        'padding-right': this.getAttribute('padding-right'),
-        'padding-top': this.getAttribute('padding-top'),
-      },
-      table: {
-        width: '100%',
-        'border-bottom': this.getAttribute('border'),
-      },
-      td2: {
-        padding: '16px',
-        background: this.getAttribute('background-color'),
-        'vertical-align': this.getAttribute('icon-align'),
-      },
-      img: {
-        display: 'none',
-        width: this.getAttribute('icon-width'),
-        height: this.getAttribute('icon-height'),
       },
     }
   }
@@ -73,74 +53,28 @@ export default class MjAccordionTitle extends BodyComponent {
     return MjAccordionTitle.defaultAttributes.fontFamily
   }
 
-  renderTitle() {
-    return `
-      <td
-        ${this.htmlAttributes({
-          class: this.getAttribute('css-class'),
-          style: 'td',
-        })}
-      >
-        ${this.getContent()}
-      </td>
-    `
-  }
-
-  renderIcons() {
-    return conditionalTag(
-      `
-      <td
-        ${this.htmlAttributes({
-          class: 'mj-accordion-ico',
-          style: 'td2',
-        })}
-      >
-        <img
-          ${this.htmlAttributes({
-            src: this.getAttribute('icon-wrapped-url'),
-            alt: this.getAttribute('icon-wrapped-alt'),
-            class: 'mj-accordion-more',
-            style: 'img',
-          })}
-        />
-        <img
-          ${this.htmlAttributes({
-            src: this.getAttribute('icon-unwrapped-url'),
-            alt: this.getAttribute('icon-unwrapped-alt'),
-            class: 'mj-accordion-less',
-            style: 'img',
-          })}
-        />
-      </td>
-    `,
-      true,
-    )
-  }
-
   render() {
-    const contentElements = [this.renderTitle(), this.renderIcons()]
-    const content = (
-      this.getAttribute('icon-position') === 'right'
-        ? contentElements
-        : contentElements.reverse()
-    ).join('\n')
+    const iconW = parseInt(this.getAttribute('icon-width'), 10) || 32
+    const iconH = parseInt(this.getAttribute('icon-height'), 10) || 32
+    const iconLeft = this.getAttribute('icon-position') === 'left'
+    const wrappedUrl = this.getAttribute('icon-wrapped-url')
+    const unwrappedUrl = this.getAttribute('icon-unwrapped-url')
 
-    return `
-      <div ${this.htmlAttributes({ class: 'mj-accordion-title' })}>
-        <table
-          ${this.htmlAttributes({
-            cellspacing: '0',
-            cellpadding: '0',
-            style: 'table',
-          })}
-        >
-          <tbody>
-            <tr>
-              ${content}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    `
+    const textSpan = `<span ${this.htmlAttributes({ style: 'span' })}>${this.getContent()}</span>`
+    const iconAmp =
+      wrappedUrl && unwrappedUrl
+        ? `<amp-img
+        ${this.htmlAttributes({
+          src: wrappedUrl,
+          alt: this.getAttribute('icon-wrapped-alt') || '+',
+          width: iconW,
+          height: iconH,
+          layout: 'fixed',
+        })}
+      ></amp-img>`
+        : ''
+
+    const parts = iconLeft ? [iconAmp, textSpan] : [textSpan, iconAmp]
+    return parts.filter(Boolean).join(' ')
   }
 }

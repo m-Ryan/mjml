@@ -47,3 +47,19 @@ export default function buildMediaQueriesTags(
     }
   `
 }
+
+/**
+ * Returns raw CSS string for AMP <style amp-custom> (media queries only).
+ * AMP allows @media; we include only the base screen media query.
+ */
+export function buildMediaQueriesAmpCss(breakpoint, mediaQueries = {}) {
+  if (isEmpty(mediaQueries)) {
+    return ''
+  }
+  const baseMediaQueries = map(
+    mediaQueries,
+    (mediaQuery, className) => `.${className} ${mediaQuery}`,
+  )
+  return `@media only screen and (min-width:${breakpoint}) {\n${baseMediaQueries.join('\n')}\n}`
+}
+

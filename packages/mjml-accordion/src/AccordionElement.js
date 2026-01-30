@@ -1,6 +1,6 @@
 import { BodyComponent } from 'mjml-core'
 import { find } from 'lodash'
-import conditionalTag from 'mjml-core/lib/helpers/conditionalTag'
+import { initComponent } from 'mjml-core'
 import AccordionText from './AccordionText'
 import AccordionTitle from './AccordionTitle'
 
@@ -32,21 +32,20 @@ export default class MjAccordionElement extends BodyComponent {
 
   getStyles() {
     return {
-      td: {
-        padding: '0px',
+      section: {
         'background-color': this.getAttribute('background-color'),
-      },
-      label: {
-        'font-size': '13px',
-        'font-family': this.getAttribute('font-family'),
-      },
-      input: {
-        display: 'none',
       },
     }
   }
 
-  handleMissingChildren() {
+  getChildContext() {
+    return {
+      ...this.context,
+      elementFontFamily: this.getAttribute('font-family'),
+    }
+  }
+
+  render() {
     const { children } = this.props
     const childrenAttr = [
       'border',
@@ -65,71 +64,61 @@ export default class MjAccordionElement extends BodyComponent {
       }),
       {},
     )
+    const context = this.getChildContext()
 
-    const result = []
+    const titleChild = find(children, { tagName: 'mj-accordion-title' })
+    const textChild = find(children, { tagName: 'mj-accordion-text' })
 
-    if (!find(children, { tagName: 'mj-accordion-title' })) {
-      result.push(
-        new AccordionTitle({
+    const titleComponent = titleChild
+      ? initComponent({
+          name: 'mj-accordion-title',
+          initialDatas: {
+            ...titleChild,
+            attributes: { ...childrenAttr, ...titleChild.attributes },
+            context,
+          },
+        })
+      : new AccordionTitle({
           attributes: childrenAttr,
-          context: this.getChildContext(),
-        }).render(),
-      )
-    }
-
-    result.push(this.renderChildren(children, { attributes: childrenAttr }))
-
-    if (!find(children, { tagName: 'mj-accordion-text' })) {
-      result.push(
-        new AccordionText({
+          context,
+          props: { content: '' },
+        })
+    const textComponent = textChild
+      ? initComponent({
+          name: 'mj-accordion-text',
+          initialDatas: {
+            ...textChild,
+            attributes: { ...childrenAttr, ...textChild.attributes },
+            context,
+          },
+        })
+      : new AccordionText({
           attributes: childrenAttr,
-          context: this.getChildContext(),
-        }).render(),
-      )
-    }
+          context,
+          props: { content: '' },
+        })
 
-    return result.join('\n')
-  }
+    const titleHtml = titleComponent ? titleComponent.render() : ''
+    const contentHtml = textComponent ? textComponent.render() : ''
+    const otherChildren = (children || []).filter(
+      (c) =>
+        c.tagName !== 'mj-accordion-title' && c.tagName !== 'mj-accordion-text',
+    )
+    const otherHtml =
+      otherChildren.length > 0
+        ? this.renderChildren(otherChildren, { attributes: childrenAttr })
+        : ''
 
-  getChildContext() {
-    return {
-      ...this.context,
-      elementFontFamily: this.getAttribute('font-family'),
-    }
-  }
-
-  render() {
     return `
-      <tr
+      <section
         ${this.htmlAttributes({
           class: this.getAttribute('css-class'),
+          style: 'section',
         })}
       >
-        <td ${this.htmlAttributes({ style: 'td' })}>
-          <label
-            ${this.htmlAttributes({
-              class: 'mj-accordion-element',
-              style: 'label',
-            })}
-          >
-            ${conditionalTag(
-              `
-              <input
-                ${this.htmlAttributes({
-                  class: 'mj-accordion-checkbox',
-                  type: 'checkbox',
-                  style: 'input',
-                })}
-              />
-            `,
-              true,
-            )}
-            <div>
-              ${this.handleMissingChildren()}
-            </div>
-          </label>
-        </td>
-      </tr>
+        <h2>${titleHtml}</h2>
+        <div>${contentHtml}${otherHtml}</div>
+      </section>
     `
   }
 }
